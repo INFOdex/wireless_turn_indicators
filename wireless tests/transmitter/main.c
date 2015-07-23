@@ -33,7 +33,7 @@ int main(void) {
 	ANSEL=0;
 	ANSELH=0;
 	
-	TXSTA = 0b00100000;
+	/*TXSTA = 0b00100000;
     RCSTA = 0b10010000;
     BAUDCTL = 0b0000000;
 
@@ -45,7 +45,7 @@ int main(void) {
     PIE1 = 0b00100000;
     PIE2 = 0;
 
-    PIR1 = 0;
+    PIR1 = 0;*/
 	
 	
 	//Begin code here
@@ -53,19 +53,25 @@ int main(void) {
 	RC7 = 1;	//pull pin RC7 to VCC to power RF module
 	
 	while(1){
-		while(!RB5);	//Hang here
-		while(RB5);		//Debounce the button
+		while(!RC1);	//Hang here
+		while(RC1);		//Debounce the button
 		
 		//Decide whether to send "off" or "on"
-		if(T==1){
-			UART_sendch(buffer);
-			buffer = 0xFF;
-			T = 0;
-		}		
 		if(T==0){
 			UART_sendch(buffer);
 			buffer = 0x00;
 			T = 1;
+			RC2 = 1;
+		}
+		
+		while(!RC1);
+		while(RC1);
+		
+		if(T==1){
+			UART_sendch(buffer);
+			buffer = 0xFF;
+			T = 0;
+			RC2 = 0;
 		}
 	}
 }
