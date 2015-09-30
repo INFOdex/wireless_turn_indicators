@@ -1,77 +1,97 @@
 #include "timer.h"
 #include "adc.h"
 #include "uart.h"
-#include "pic.h"
+#include <pic.h>
+
+char buff = 0;		//Buffer to be sent
+char lastbuff = 0;	
+char lastlastbuff = 0;	
+char myID = 69;		//ID # of this module
+char ID;			//ID that comes in from reciever on error
+char IDend = 0;		//boolean to determine if end of ID
+char TooManyS = 0;	//boolean to determine interference
+char blink = 0;
+
+void init(void);
 
 int main(void) {
-	
-	//Variable initializations
-	
-	char buffer = 0xFF;	//The 8-bit transmission buffer
-	int T = 0;	//the toggle state (boolean)
-	
-	//Pin mode initializations and
-	//turn off unnecessary functionality
-	__CONFIG(WDTE_OFF & PWRTE_OFF & MCLRE_OFF & BOREN_OFF);
+	init();
+	delayms(1000);
+
+	while (1) {
+		while((PORTC && 0xF0) == 0);	//check PORTC for button push
+		if (!blink && RC5) {		//RC5 (Left) is pushed & not blinking
+			buff = 76;
+			RC0 = 1;
+			UART_sendch(buff);
+			delayms(200);
+		}
+		
+		if (!blink && RC4) {		//RC4 (Right) is pushed & not blinking
+			buff = 82;
+			RC0 = 1;
+			UART_sendch(buff);
+			delayms(200);
+		}
+		
+		blink++;		//change state to BLINK
+		
+		while((PORTC && 0xF0) == 0);
+			if (blink && RC5) {			//RC5 (Left) is pushed & blinking
+				buff = 88;
+				RC0 = 0;
+				UART_sendch(buff);
+				delayms(200);
+			}
+
+			if (blink && RC4) {			//RC4 (Right) is pushed & blinking
+				buff = 88;
+				RC0 = 0;
+				UART_sendch(buff);
+				delayms(200);
+			}
+		
+		blink--;		//change state to NOBLINK
+	}
+	return 0;
+
+}
+
+
+void init(void) {
+
+	//set internal oscillator to 500 kHz
+	//and run from external clock defined by FOSC
+	OSCCON|=0b00111000;
 
 	//set pin RA0 to output
-	TRISA=0x00;
+	TRISA=0;
 
-	//set pin RB5 to input and RB7 to output
-	TRISB=(TRISB&~0xF0);	//clear top four bits
-	TRISB=(TRISB|0x20);	//set them to 0010
+	//set pin RB0 to output
+	TRISB=0;
 
 	//set pin RC0 to output
-	TRISC=0x00;
+	TRISC=0xF0;
 
 	//Initialize PORTS A,B and C
-	PORTA=0x00;
-	PORTB=0x00;
-	PORTC=0x00;
+	PORTA=0;
+	PORTB=0;
+	PORTC=0;
 
 	//configure the device to run as a digital input 
 	ANSEL=0;
 	ANSELH=0;
-	
-	/*TXSTA = 0b00100000;
-    RCSTA = 0b10010000;
-    BAUDCTL = 0b0000000;
 
-    SPBRG = 12;
-    SPBRGH = 0;
+	//ADC_init();
+	UART_init();
 
-    OSCCON = 0b01111001;
-	INTCON = 0b11000000;
-    PIE1 = 0b00100000;
-    PIE2 = 0;
-
-    PIR1 = 0;*/
 	
-	
-	//Begin code here
-	UART_init();	//Use libraries to initialize UART
-	RC7 = 1;	//pull pin RC7 to VCC to power RF module
-	
-	while(1){
-		while(!RC1);	//Hang here
-		while(RC1);		//Debounce the button
-		
-		//Decide whether to send "off" or "on"
-		if(T==0){
-			UART_sendch(buffer);
-			buffer = 0x00;
-			T = 1;
-			RC2 = 1;
-		}
-		
-		while(!RC1);
-		while(RC1);
-		
-		if(T==1){
-			UART_sendch(buffer);
-			buffer = 0xFF;
-			T = 0;
-			RC2 = 0;
-		}
-	}
+//	RB4=0;
+//	RB6=0;
+//	delayms(50);
+//	RB4=1;
+//	RB6=1;
+//	delayms(50);
+	//RB4=0;
+	//RB6=0;
 }
