@@ -1,18 +1,29 @@
-#include "timer.h"
-#include "adc.h"
+//#include "timer.h"
+//#include "adc.h"
 #include "uart.h"
 #include <pic.h>
-#include <HTC.h>
+#include <htc.h>
 #define _LEGACY_HEADERS
 
-__CONFIG(INTIO & WDTDIS & PWRTDIS & MCLRDIS &
-		UNPROTECT & BORDIS & IESODIS & FCMDIS);
+// CONFIG
+#pragma config FOSC = INTRCIO   // Oscillator Selection bits (INTOSCIO oscillator: I/O function on RA4/OSC2/CLKOUT pin, I/O function on RA5/OSC1/CLKIN)
+#pragma config WDTE = OFF       // Watchdog Timer Enable bit (WDT disabled and can be enabled by SWDTEN bit of the WDTCON register)
+#pragma config PWRTE = OFF      // Power-up Timer Enable bit (PWRT disabled)
+#pragma config MCLRE = OFF      // MCLR Pin Function Select bit (MCLR pin function is digital input, MCLR internally tied to VDD)
+#pragma config CP = OFF         // Code Protection bit (Program memory code protection is disabled)
+#pragma config CPD = OFF        // Data Code Protection bit (Data memory code protection is disabled)
+#pragma config BOREN = OFF      // Brown-out Reset Selection bits (BOR disabled)
+#pragma config IESO = OFF       // Internal External Switchover bit (Internal External Switchover mode is disabled)
+#pragma config FCMEN = OFF      // Fail-Safe Clock Monitor Enabled bit (Fail-Safe Clock Monitor is disabled)
 
-int count = 0;		//counter to keep track of time in interrupt
-char buff = 0;		//buffer to be sent
-char r_blink = 0;	//boolean to denote state of right indicator
-char l_blink = 0;	//boolean to denote state of left indicator
-char h_blink = 0;	//boolean to denote state of hazard mode
+
+volatile char count = 0;	//counter to keep track of time in interrupt
+volatile int state = 0;     //binary, digital state machine for reset
+volatile char buff = 0;		//buffer to be sent
+volatile char workaround;   //used to send X (all cancel) via interrupt
+volatile char r_blink = 0;	//boolean to denote state of right indicator
+volatile char l_blink = 0;	//boolean to denote state of left indicator
+volatile char h_blink = 0;	//boolean to denote state of hazard mode
 
 /*------LEGEND------*/
 //X is for all cancel
@@ -27,36 +38,32 @@ char h_blink = 0;	//boolean to denote state of hazard mode
 
 void init(void);	//initialization function prototype
 
-void interrupt Timer0_ISR(void){	//interrupt routine for dash indicator blinking
-	if(T0IE && T0IF){		//check if interrupt is enabled and flag is set
-		T0IF = 0;	
-		count = (count + 1);
-		if(count = 7){		//this is ~= 0.5 seconds after 7 instances of this interrupt
-			if(r_blink){
-				RC0 = !RC0;
-				count = 0;
-			}
-			if(l_blink){
-				RC1 = !RC1;
-				count = 0;
-			}
-			if (h_blink){
-				RC2 = !RC2;
-				count = 0;
-			}
-		}
-	}
+void interrupt ISR(void){	//interrupt routine for dash indicator blinking
+    for(int i = 0; i<10000; i++);
+    if(RA5 && RABIF){
+        count = PORTA;              //read from portA to clear interrupt
+        RABIF = 0;                  //clear the flag
+        if(l_blink || r_blink || h_blink){
+            workaround = 1;                 //for use outside interrupt
+        }
+        l_blink = 0;        //left off
+        r_blink = 0;        //right off
+        h_blink = 0;        //hazard mode off
+        PORTC = 0;
+    }
 }
 
 int main(void) {
+	RABIF = 0;         //turn off button interrupt flag for good measure
 	init();			
-	delayms(1000);	//delay used to make sure that UART is set up
-	
+	for(int i = 0; i<25000; i++);	//delay used to make sure that UART is set up
+	RABIF = 0;
+
 	//char r_blink = 0;	//boolean to denote state of right indicator
 	//char l_blink = 0;	//boolean to denote state of left indicator
 	//char h_blink = 0;	//boolean to denote state of hazard mode
 
-	while (!RCIF) {
+	while (1) {
 		while((PORTC && 0xF0) == 0);	//check PORTC for button push, hang here if not pushed
 			while(!l_blink && RC5) {		//RC5 (Left) is pushed & not blinking
 				while(RC5);			//debounce
@@ -64,7 +71,10 @@ int main(void) {
 				RC1 = 1;
 				UART_sendch(buff);
 				l_blink = 1;		//change state to BLINK
-				delayms(200);
+                while(l_blink){
+                    RC1 = !RC1;
+                    for(int i = 0; i<27000; i++);
+                }
 				
 			}
 		
@@ -74,39 +84,10 @@ int main(void) {
 				RC0 = 1;
 				UART_sendch(buff);
 				r_blink = 1;		//change state to BLINK
-				delayms(200);
-			}
-		
-		
-		
-			while(l_blink && RC5) {			//RC5 (Left) is pushed & blinking
-				while(RC5);			//debounce
-				buff = 89;			//Y
-				RC1 = 0;
-				UART_sendch(buff);
-				l_blink = 0;		//change state to NOblink
-				delayms(200);
-			}
-
-			while(r_blink && RC4) {			//RC4 (Right) is pushed & blinking
-				while(RC4);			//debounce
-				buff = 90;			//Z
-				RC0 = 0;
-				UART_sendch(buff);
-				r_blink = 0;		//change state to NOblink
-				delayms(200);
-			}
-			
-			while((r_blink || l_blink) && RC6) {	//ResetAll or cancel is pushed
-				while(RC6);			//debounce
-				buff = 88;			//X
-				RC0 = 0;			//turn off right dash indicator
-				RC1 = 0;			//turn off left dash indicator
-				UART_sendch(buff);
-				l_blink = 0;		//reset to NOblink
-				r_blink = 0;		//reset to NOblink
-				h_blink = 0;
-				delayms(200);
+                while(r_blink){
+                    RC0 = !RC0;
+                    for(int i = 0; i<27000; i++);
+                }
 			}
 			
 			while(!h_blink && RC7) {			//RC7 (Hazard) is pushed
@@ -114,24 +95,22 @@ int main(void) {
 				buff = 72;			//H
 				UART_sendch(buff);
 				RC0 = 1;			//turn on both dash indicators
-				RC1 = 1;
+				RC1 = 0;
 				h_blink = 1;		//change state to blink for both indicators
 				r_blink = 1;
 				l_blink = 1;
-				delayms(200);
+                while(h_blink){
+                    RC0 = !RC0;
+                    RC1 = !RC1;
+                    for(int i = 0; i<27000; i++);
+                }
 			}
-			
-			while(h_blink && RC7) {		//RC7 (Hazard) is pushed & hazard mode is enabled
-				while(RC7);			//debounce
-				buff = 88;			//X
-				RC0 = 0;			//turn off right dash indicator
-				RC1 = 0;			//turn off left dash indicator
-				UART_sendch(buff);
-				h_blink = 0;		//reset to NOblink for both indicators
-				r_blink = 0;
-				l_blink = 0;
-				delayms(200);
-			}
+        
+        if(workaround){     //send all cancel if interrupt sets "workaround" to 1
+            buff = 88;      //X
+            UART_sendch(buff);
+            workaround = 0; //reset workaround
+        }
 		
 	
 	}
@@ -146,10 +125,10 @@ void init(void) {
 	OSCCON|=0b00111000;
 
 	//set pin RA0 to output
-	TRISA=0;
+	TRISA=0x3F;
 
 	//set pin RB0 to output
-	TRISB=0;
+	TRISB=0x00;
 
 	//set pin RC0 to output
 	TRISC=0xF0;
@@ -162,12 +141,19 @@ void init(void) {
 	//configure the device to run as a digital input 
 	ANSEL=0;
 	ANSELH=0;
+	
+	//disable comparators
+	//CM1CON0 = 0;        //Initialize comp 1 off 
+    //CM2CON0 = 0;        //Initialize comp 2 off 
 
-	//Configure timer0 for interrupts
-	TMR0 = 0;
-	OPTION_REG = 0B00000111;
-	T0IE = 1; 		//enable TMR0 overflow interrupts
-	//GIE = 1;		//enable Global interrupts
+	//Configure Interrupt On Change for RA5
+	INTCON = 0x00; 
+    IOCA5 = 1;          //Enabled RA5 Interrupt-On-Change 
+    RABIF = 0;          //Enabled Interrupt-On-Change Interupt
+    RABIE = 1;
+    RABIF = 0;
+	//INTCON = 0b00001000;
+	GIE = 1;		//enable Global interrupts
 	
 	//ADC_init();
 	UART_init();
