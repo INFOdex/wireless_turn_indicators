@@ -3,67 +3,61 @@
 #include "uart.h"
 #include <pic.h>
 
-char buff = 0;
-char lastbuff = 0;
-char lastlastbuff = 0;
-char myID = 69;
-char ID;
-char blink = 0;
-char IDend = 0;
-char TooManyS = 0;
-char i;
+__CONFIG (FOSC_XT & WDTE_OFF & PWRTE_ON, BOREN_OFF & LVP_OFF & CPD_OFF & WRT_OFF);
+
+char buff = 0;			//buffer to be recieved
+char lastbuff = 0;		//the previous buffer (error checking)
+char blink = 0;			//binary state machine to determine command mode status
+char TooManyS = 0;		//binary state machine to determine error in data recieved
+char i;					//counter
 
 void init(void);
 
-int main(void) {
+int main(void) 
+{	
 	init();
-	delayms(1000);
+	delayms(1000);		//used to insure the initializations
 
 	while (1) {
-		if (!RCIF) {
+
+		while(!RCIF) {
 			while(!RCIF);		//wait for the recieved data flag
 		}
 		if(RCIF){
+			lastbuff = FERR;
 			lastbuff = buff;	//keep track of the last buffer
 			buff = RCREG;		//get the new buffer from register
 		} 
 
-		if (buff == 83) {
-			blink = 1;		//if buff is "S", command mode on
-			i = 0;
+		if ((buff == 76) || (buff == 72)) {
+			blink = 1;		//if buff is L or H, command mode on
+			//i = 0;
 
 			if (lastbuff == buff) {
-				TooManyS = 1;		//check if S is put in twice
+				TooManyS = 1;		//check if L is put in twice
 			}		
 		}
 
-		if (buff != 83) {
-			TooManyS = 0;		//S is not in there twice
+		if (buff != 76) {
+			TooManyS = 0;		//L is not in there twice
 		}
 
-		/*if ((i >= 1) && (!IDend)) {			//if more than 1 bytes, the ID begins
-			if ((buff == 82) || (buff == 88)) {	//if R or compliment X, the end of the ID is reached
-				IDend = 1;			//denotes the ending of the ID #
-			}
-			else {
-				ID += buff - 48;	//un-ascii the ID #
-			}
-		}*/
-
-		if ((buff == 88) /*&& (myID == ID)*/) {
-			blink = 0;				//if buff is R, turn off command mode
-			UART_sendch(buff);
+		if ((buff == 88)) {
+			blink = 0;				//if buff is X, turn off command mode
+			//UART_sendch(buff);
 		}
 
-		if ((blink == 1) /*&& (!TooManyS) && (myID == ID)*/) {
+		if ((blink == 1) && (!TooManyS)) {
 			while(!RCIF){ 
 				RC2 = !RC2;			//send the value in buff, if all is good
 				delayms(700);
 				}
+			RC2 = 1;
+			buff = 83;
+			UART_sendch(buff);
 			RC2 = 0;
-		}
-
-		i++;
+		}	
+		//i++;
 	}
 	return 0;
 
@@ -74,6 +68,7 @@ void init(void) {
 
 	//set internal oscillator to 500 kHz
 	//and run from external clock defined by FOSC
+	//if no FOSC, 4MHz internal clock is default
 	OSCCON|=0b00111000;
 
 	//set pin RA0 to output
@@ -93,8 +88,8 @@ void init(void) {
 	//configure the device to run as a digital input 
 	ANSEL=0;
 	ANSELH=0;
+	
 
-	//ADC_init();
 	UART_init();
 
 	
