@@ -1,5 +1,4 @@
 #include "timer.h"
-#include "adc.h"
 #include "uart.h"
 #include <pic.h>
 
@@ -24,27 +23,31 @@ int main(void)
 			while(!RCIF);		//wait for the recieved data flag
 		}
 		if(RCIF){
-			lastbuff = FERR;
+			lastbuff = FERR;	//check for framing errors
 			lastbuff = buff;	//keep track of the last buffer
 			buff = RCREG;		//get the new buffer from register
 		} 
 
-		if ((buff == 76) || (buff == 72)) {
-			blink = 1;		//if buff is L or H, command mode on
-			//i = 0;
-
+		if ((buff == 82) || (buff == 72)) {
+			blink = 1;		//if buff is R or H, command mode on
+			
 			if (lastbuff == buff) {
-				TooManyS = 1;		//check if L is put in twice
-			}		
+				TooManyS = 1;		//check if R is put in twice
+			}
+			
+			RC2 = 1;			//turn on light
+			buff = 83;			//change buffer
+			UART_sendch(buff);	//send confirmation "s"
+			RC2 = 0;			//turn off light		
 		}
 
-		if (buff != 76) {
-			TooManyS = 0;		//L is not in there twice
+		if (buff != 82) {
+			TooManyS = 0;		//R is not in there twice
 		}
 
 		if ((buff == 88)) {
 			blink = 0;				//if buff is X, turn off command mode
-			//UART_sendch(buff);
+			RC2 = 0;
 		}
 
 		if ((blink == 1) && (!TooManyS)) {
@@ -52,10 +55,6 @@ int main(void)
 				RC2 = !RC2;			//send the value in buff, if all is good
 				delayms(700);
 				}
-			RC2 = 1;
-			buff = 83;
-			UART_sendch(buff);
-			RC2 = 0;
 		}	
 		//i++;
 	}
