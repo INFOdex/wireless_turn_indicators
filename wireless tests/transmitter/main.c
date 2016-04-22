@@ -36,7 +36,7 @@ volatile char error_chk = 0; //buffer with error checking result
 void init(void);	//initialization function prototype
 
 void interrupt ISR(void){	//interrupt routine for dash indicator blinking
-    for(int i = 0; i<10000; i++);
+    //for(int i = 0; i<10000; i++);
     if(RA5 && RABIF){
         count = PORTA;              //read from portA to clear interrupt
         RABIF = 0;                  //clear the flag
