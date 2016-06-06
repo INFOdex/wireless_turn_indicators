@@ -1,4 +1,4 @@
-# wireless_turn_indicators
+# Testing of Wireless Turn Indicators for Automotive Applications
 Created as a capstone project for Robert S. and Peter L.
 
 
